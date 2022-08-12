@@ -14,7 +14,10 @@
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
-    "paths": {}
+    "paths": {
+      "@tusk/module-federation": ["libs/module-federation/src/index.ts"],
+      "@tusk/webpack-mf": ["libs/webpack-mf/src/index.ts"]
+    }
   },
   "exclude": ["node_modules", "tmp"]
 }
