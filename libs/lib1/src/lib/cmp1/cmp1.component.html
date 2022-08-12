@@ -1,0 +1,11 @@
+<h1>Counter (rendered from {{ appName }})</h1>
+
+<p>The counter value below is shared across host and remote.</p>
+
+<span>Counter value: {{ value }}</span>
+
+<div>
+  <button (click)="increment()">Increment</button>
+  <button (click)="decrement()">Decrement</button>
+  <button (click)="reset()">Reset</button>
+</div>

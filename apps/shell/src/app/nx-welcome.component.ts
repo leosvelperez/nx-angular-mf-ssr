@@ -427,6 +427,9 @@ import { Component, OnInit, ViewEncapsulation } from '@angular/core';
         }
       }
     </style>
+
+    <tusk-cmp1 appName="shell"></tusk-cmp1>
+
     <div class="wrapper">
       <div class="container">
         <!--  WELCOME  -->

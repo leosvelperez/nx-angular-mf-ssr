@@ -15,6 +15,7 @@
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
+      "@tusk/lib1": ["libs/lib1/src/index.ts"],
       "@tusk/module-federation": ["libs/module-federation/src/index.ts"],
       "@tusk/webpack-mf": ["libs/webpack-mf/src/index.ts"]
     }

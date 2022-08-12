@@ -2,6 +2,7 @@
   "$schema": "./node_modules/nx/schemas/workspace-schema.json",
   "version": 2,
   "projects": {
+    "lib1": "libs/lib1",
     "module-federation": "libs/module-federation",
     "remote1": "apps/remote1",
     "shell": "apps/shell",

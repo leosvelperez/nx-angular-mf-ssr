@@ -1,6 +1,7 @@
 import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { RouterModule } from '@angular/router';
+import { Lib1Module } from '@tusk/lib1';
 import { loadRemoteModule } from '@tusk/module-federation';
 import { AppComponent } from './app.component';
 import { NxWelcomeComponent } from './nx-welcome.component';
@@ -25,6 +26,7 @@ import { NxWelcomeComponent } from './nx-welcome.component';
       ],
       { initialNavigation: 'enabledBlocking' }
     ),
+    Lib1Module,
   ],
   providers: [],
   bootstrap: [AppComponent],
