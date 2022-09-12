@@ -325,7 +325,9 @@ export async function withModuleFederationSsr(options: MFSSRConfig) {
       ...(isRemote
         ? [
             new NodeAsyncHttpRuntime({
-              getBaseUri: () => options.remoteBaseUrlPromise,
+              name: normalizedName,
+              remotes: mappedRemotes,
+              promiseBaseURI: () => options.remoteBaseUrlPromise,
             }),
           ]
         : []),

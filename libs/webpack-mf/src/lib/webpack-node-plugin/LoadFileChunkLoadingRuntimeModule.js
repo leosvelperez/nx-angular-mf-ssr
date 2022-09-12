@@ -1,33 +1,16 @@
+/*
+	MIT License http://www.opensource.org/licenses/mit-license.php
+*/
+
+'use strict';
+
 const RuntimeGlobals = require('webpack/lib/RuntimeGlobals');
 const RuntimeModule = require('webpack/lib/RuntimeModule');
 const Template = require('webpack/lib/Template');
-const { getInitialChunkIds } = require('webpack/lib/javascript/StartupHelpers');
 const compileBooleanMatcher = require('webpack/lib/util/compileBooleanMatcher');
 const { getUndoPath } = require('webpack/lib/util/identifier');
-const {
-  chunkHasJs,
-  getChunkFilenameTemplate,
-} = require('webpack/lib/javascript/JavascriptModulesPlugin');
 
-// TODO: better url normalization, use node-fetch
-const rpcLoadTemplate = `
-function rpcLoad(baseURI, chunkFileName, cb) {
-  let url = baseURI + (baseURI.endsWith('/') ? '' : '/') + chunkFileName;
-  let request = (url.startsWith('https') ? require('https') : require('http')).get(url, function(resp) {
-    if (resp.statusCode === 200) {
-      let rawData = '';
-      resp.setEncoding('utf8');
-      resp.on('data', chunk => { rawData += chunk; });
-      resp.on('end', () => {
-        cb(null, rawData);
-      });
-    } else {
-      cb(resp);
-    }
-  });
-  request.on('error', error => cb(error));
-}
-`;
+const loadScriptTemplate = require('./loadScript');
 
 class ReadFileChunkLoadingRuntimeModule extends RuntimeModule {
   constructor(runtimeRequirements, options, context) {
@@ -38,11 +21,45 @@ class ReadFileChunkLoadingRuntimeModule extends RuntimeModule {
   }
 
   /**
+   * @private
+   * @param {Chunk} chunk chunk
+   * @param {string} rootOutputDir root output directory
+   * @returns {string} generated code
+   */
+  _generateBaseUri(chunk, rootOutputDir) {
+    const options = chunk.getEntryOptions();
+    if (options && options.baseUri) {
+      return `${RuntimeGlobals.baseURI} = ${JSON.stringify(options.baseUri)};`;
+    }
+
+    return `${RuntimeGlobals.baseURI} = require("url").pathToFileURL(${
+      rootOutputDir
+        ? `__dirname + ${JSON.stringify('/' + rootOutputDir)}`
+        : '__filename'
+    });`;
+  }
+
+  /**
    * @returns {string} runtime code
    */
   generate() {
+    const { baseURI, promiseBaseURI, remotes, name } = this.options;
+    const { webpack } = this.context;
+    const chunkHasJs =
+      (webpack && webpack.javascript.JavascriptModulesPlugin.chunkHasJs) ||
+      require('webpack/lib/javascript/JavascriptModulesPlugin').chunkHasJs;
+
+    // workaround for next.js
+    const getInitialChunkIds = (chunk, chunkGraph) => {
+      const initialChunkIds = new Set(chunk.ids);
+      for (const c of chunk.getAllInitialChunks()) {
+        if (c === chunk || chunkHasJs(c, chunkGraph)) continue;
+        for (const id of c.ids) initialChunkIds.add(id);
+      }
+      return initialChunkIds;
+    };
+
     const { chunkGraph, chunk } = this;
-    const { baseURI, getBaseUri } = this.options;
     const { runtimeTemplate } = this.compilation;
     const fn = RuntimeGlobals.ensureChunkHandlers;
     const withBaseURI = this.runtimeRequirements.has(RuntimeGlobals.baseURI);
@@ -61,12 +78,19 @@ class ReadFileChunkLoadingRuntimeModule extends RuntimeModule {
     const withHmrManifest = this.runtimeRequirements.has(
       RuntimeGlobals.hmrDownloadManifest
     );
+
     const conditionMap = chunkGraph.getChunkConditionMap(chunk, chunkHasJs);
     const hasJsMatcher = compileBooleanMatcher(conditionMap);
     const initialChunkIds = getInitialChunkIds(chunk, chunkGraph, chunkHasJs);
 
     const outputName = this.compilation.getPath(
-      getChunkFilenameTemplate(chunk, this.compilation.outputOptions),
+      (
+        (webpack &&
+          webpack.javascript.JavascriptModulesPlugin
+            .getChunkFilenameTemplate) ||
+        require('webpack/lib/javascript/JavascriptModulesPlugin')
+          .getChunkFilenameTemplate
+      )(chunk, this.compilation.outputOptions),
       {
         chunk,
         contentHashType: 'javascript',
@@ -78,20 +102,20 @@ class ReadFileChunkLoadingRuntimeModule extends RuntimeModule {
       false
     );
 
+    const stateExpression = withHmr
+      ? `${RuntimeGlobals.hmrRuntimeStatePrefix}_readFileVm`
+      : undefined;
+
     return Template.asString([
       withBaseURI
-        ? Template.asString([
-            `${RuntimeGlobals.baseURI} = require("url").pathToFileURL(${
-              rootOutputDir
-                ? `__dirname + ${JSON.stringify('/' + rootOutputDir)}`
-                : '__filename'
-            });`,
-          ])
+        ? this._generateBaseUri(chunk, rootOutputDir)
         : '// no baseURI',
       '',
       '// object to store loaded chunks',
       '// "0" means "already loaded", Promise means loading',
-      'var installedChunks = {',
+      `var installedChunks = ${
+        stateExpression ? `${stateExpression} = ${stateExpression} || ` : ''
+      }{`,
       Template.indent(
         Array.from(initialChunkIds, (id) => `${JSON.stringify(id)}: 0`).join(
           ',\n'
@@ -161,22 +185,78 @@ class ReadFileChunkLoadingRuntimeModule extends RuntimeModule {
                           )} + ${
                             RuntimeGlobals.getChunkScriptFilename
                           }(chunkId));`,
-                          rpcLoadTemplate,
-                          `rpcLoad(${
-                            getBaseUri
-                              ? `await ${getBaseUri(baseURI)}`
-                              : `"${baseURI}"`
-                          }, ${
-                            RuntimeGlobals.getChunkScriptFilename
-                          }(chunkId), function(err, content) {`,
+                          "var fs = require('fs');",
+                          'if(fs.existsSync(filename)) {',
                           Template.indent([
-                            'if(err) return reject(err);',
-                            'var chunk = {};',
-                            "require('vm').runInThisContext('(function(exports, require, __dirname, __filename) {' + content + '\\n})', filename)" +
-                              "(chunk, require, require('path').dirname(filename), filename);",
-                            'installChunk(chunk);',
+                            'console.log(filename,"exists locally")',
+                            "fs.readFile(filename, 'utf-8', function(err, content) {",
+                            Template.indent([
+                              'if(err) return reject(err);',
+                              'var chunk = {};',
+                              "require('vm').runInThisContext('(function(exports, require, __dirname, __filename) {' + content + '\\n})', filename)" +
+                                "(chunk, require, require('path').dirname(filename), filename);",
+                              'installChunk(chunk);',
+                            ]),
+                            '});',
                           ]),
-                          '});',
+                          '} else {',
+                          Template.indent([
+                            loadScriptTemplate,
+                            "console.log('needs to load remote script');",
+
+                            `console.log('before remote var creation')`,
+                            `console.log('before remote var creation', ${JSON.stringify(
+                              remotes
+                            )})`,
+                            `var remotes = ${JSON.stringify(remotes)};`,
+
+                            `console.log('remotes in chunk load',remotes)`,
+
+                            `console.log('global.REMOTE_CONFIG',global.REMOTE_CONFIG)`,
+
+                            `if(global.REMOTE_CONFIG && !global.REMOTE_CONFIG[${JSON.stringify(
+                              name
+                            )}]) {
+                            if(global.loadedRemotes){
+                              for (const property in global.loadedRemotes) {
+                                global.REMOTE_CONFIG[property] = global.loadedRemotes[property].path
+                              }
+                            }`,
+                            Template.indent([
+                              `Object.assign(global.REMOTE_CONFIG, remotes)`,
+                            ]),
+                            '}',
+
+                            `var requestedRemote = global.REMOTE_CONFIG[${JSON.stringify(
+                              name
+                            )}]`,
+
+                            `if(typeof requestedRemote === 'function'){
+                              requestedRemote = await requestedRemote()
+                            }`,
+                            `console.log('requestedRemote',requestedRemote);`,
+
+                            `var scriptUrl = new URL(requestedRemote.split("@")[1]);`,
+
+                            `var chunkName = ${RuntimeGlobals.getChunkScriptFilename}(chunkId);`,
+
+                            `console.log('remotes global',global.REMOTE_CONFIG);`,
+
+                            `console.log('chunkname to request',chunkName);`,
+                            `var fileToReplace = require('path').basename(scriptUrl.pathname);`,
+                            `scriptUrl.pathname = scriptUrl.pathname.replace(fileToReplace, chunkName);`,
+                            `console.log('will load remote chunk', scriptUrl.toString());`,
+                            `loadScript(scriptUrl.toString(), function(err, content) {`,
+                            Template.indent([
+                              "if(err) {console.error('error loading remote chunk', scriptUrl.toString(),'got',content); return reject(err);}",
+                              'var chunk = {};',
+                              "require('vm').runInThisContext('(function(exports, require, __dirname, __filename) {' + content + '\\n})', filename)" +
+                                "(chunk, require, require('path').dirname(filename), filename);",
+                              'installChunk(chunk);',
+                            ]),
+                            '});',
+                          ]),
+                          '}',
                         ]),
                         '});',
                         'promises.push(installedChunkData[2] = promise);',
@@ -203,17 +283,12 @@ class ReadFileChunkLoadingRuntimeModule extends RuntimeModule {
         ? Template.asString([
             'function loadUpdateChunk(chunkId, updatedModulesList) {',
             Template.indent([
-              'return new Promise(async function(resolve, reject) {',
+              'return new Promise(function(resolve, reject) {',
               Template.indent([
                 `var filename = require('path').join(__dirname, ${JSON.stringify(
                   rootOutputDir
                 )} + ${RuntimeGlobals.getChunkUpdateScriptFilename}(chunkId));`,
-                rpcLoadTemplate,
-                `rpcLoad(${
-                  getBaseUri ? `await ${getBaseUri(baseURI)}` : `"${baseURI}"`
-                }, ${
-                  RuntimeGlobals.getChunkUpdateScriptFilename
-                }(chunkId), function(err, content) {`,
+                "require('fs').readFile(filename, 'utf-8', function(err, content) {",
                 Template.indent([
                   'if(err) return reject(err);',
                   'var update = {};',
@@ -274,7 +349,6 @@ class ReadFileChunkLoadingRuntimeModule extends RuntimeModule {
                 `var filename = require('path').join(__dirname, ${JSON.stringify(
                   rootOutputDir
                 )} + ${RuntimeGlobals.getUpdateManifestFilename}());`,
-                //TODO manifest support
                 "require('fs').readFile(filename, 'utf-8', function(err, content) {",
                 Template.indent([
                   'if(err) {',

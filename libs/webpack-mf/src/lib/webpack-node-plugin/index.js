@@ -1,6 +1,4 @@
 const CommonJsChunkLoadingPlugin = require('./CommonJsChunkLoadingPlugin');
-const NodeEnvironmentPlugin = require('webpack/lib/node/NodeEnvironmentPlugin');
-const NodeTargetPlugin = require('webpack/lib/node/NodeTargetPlugin');
 
 class NodeAsyncHttpRuntime {
   constructor(options, context) {
@@ -15,6 +13,9 @@ class NodeAsyncHttpRuntime {
       );
     }
 
+    // When used with Next.js, context is needed to use Next.js webpack
+    const { webpack } = this.context;
+
     // This will enable CommonJsChunkFormatPlugin
     compiler.options.output.chunkFormat = 'commonjs';
     // This will force async chunk loading
@@ -22,15 +23,19 @@ class NodeAsyncHttpRuntime {
     // Disable default config
     compiler.options.output.enabledChunkLoadingTypes = false;
 
-    new NodeEnvironmentPlugin({
+    new (webpack?.node.NodeEnvironmentPlugin ||
+      require('webpack/lib/node/NodeEnvironmentPlugin'))({
       infrastructureLogging: compiler.options.infrastructureLogging,
     }).apply(compiler);
-    new NodeTargetPlugin().apply(compiler);
+    new (webpack?.node.NodeTargetPlugin ||
+      require('webpack/lib/node/NodeTargetPlugin'))().apply(compiler);
     new CommonJsChunkLoadingPlugin(
       {
         asyncChunkLoading: true,
+        name: this.options.name,
+        remotes: this.options.remotes,
         baseURI: compiler.options.output.publicPath,
-        getBaseUri: this.options.getBaseUri,
+        promiseBaseURI: this.options.promiseBaseURI,
       },
       this.context
     ).apply(compiler);
