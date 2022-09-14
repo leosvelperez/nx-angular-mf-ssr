@@ -1851,6 +1851,10 @@
   resolved "https://registry.npmjs.org/@leichtgewicht/ip-codec/-/ip-codec-2.0.4.tgz"
   integrity sha512-Hcv+nVC0kZnQ3tD9GVu5xSMR4VVYOteQIr/hwFPVEvPdlXqgGEuRjiheChHgdM+JyqdgNcmzZOX/tnl0JOiI7A==
 
+"@module-federation/node@https://github.com/module-federation/node.git#move_over_nextjs-mf_node":
+  version "0.0.1"
+  resolved "https://github.com/module-federation/node.git#bc75e8d8611134ff70b6bb029b77bbcca9c3ce90"
+
 "@ngtools/webpack@14.1.2":
   version "14.1.2"
   resolved "https://registry.npmjs.org/@ngtools/webpack/-/webpack-14.1.2.tgz"

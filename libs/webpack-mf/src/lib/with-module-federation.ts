@@ -15,6 +15,7 @@ import {
 import { getDependentPackagesForProject, readRootPackageJson } from './utils';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const NodeAsyncHttpRuntime = require('./webpack-node-plugin');
+const NodeFederationPlugin = require('@module-federation/node');
 
 export type MFRemotes = string[] | [remoteName: string, remoteUrl: string][];
 
@@ -324,10 +325,9 @@ export async function withModuleFederationSsr(options: MFSSRConfig) {
       sharedLibraries.getReplacementPlugin(),
       ...(isRemote
         ? [
-            new NodeAsyncHttpRuntime({
+            new NodeFederationPlugin.StreamingTargetPlugin({
               name: normalizedName,
               remotes: mappedRemotes,
-              promiseBaseURI: () => options.remoteBaseUrlPromise,
             }),
           ]
         : []),
