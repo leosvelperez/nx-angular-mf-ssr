@@ -315,7 +315,7 @@ export async function withModuleFederationSsr(options: MFSSRConfig) {
     },
     plugins: [
       ...(config.plugins ?? []),
-      new container.ModuleFederationPlugin({
+      new NodeFederationPlugin.NodeTargetPlugin({
         name: normalizedName,
         filename: 'remoteEntry.js',
         exposes: options.exposes,
