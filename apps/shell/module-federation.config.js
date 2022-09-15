@@ -1,7 +1,4 @@
 module.exports = {
   name: 'shell',
-  remotes: [],
-  // TODO: remove when webpack-mf is ready
-  shared: (library, config) =>
-    library !== '@tusk/module-federation' ? config : false,
+  remotes: [['remote1', 'http://localhost:4201/browser/remoteEntry.mjs']],
 };
