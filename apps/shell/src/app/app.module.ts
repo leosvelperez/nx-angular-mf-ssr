@@ -2,7 +2,6 @@ import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { RouterModule } from '@angular/router';
 import { Lib1Module } from '@tusk/lib1';
-import { loadRemoteModule } from '@tusk/module-federation';
 import { AppComponent } from './app.component';
 import { NxWelcomeComponent } from './nx-welcome.component';
 
@@ -15,9 +14,7 @@ import { NxWelcomeComponent } from './nx-welcome.component';
         {
           path: 'remote1',
           loadChildren: () =>
-            loadRemoteModule('remote1', './Module').then(
-              (m) => m.RemoteEntryModule
-            ),
+            import('remote1/Module').then((m) => m.RemoteEntryModule),
         },
         {
           path: '',

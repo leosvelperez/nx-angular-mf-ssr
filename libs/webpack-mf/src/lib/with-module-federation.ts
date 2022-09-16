@@ -14,7 +14,7 @@ import {
 } from './mf-webpack';
 import { getDependentPackagesForProject, readRootPackageJson } from './utils';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const NodeAsyncHttpRuntime = require('./webpack-node-plugin');
+const NodeFederationPlugin = require('@module-federation/node');
 
 export type MFRemotes = string[] | [remoteName: string, remoteUrl: string][];
 
@@ -64,7 +64,25 @@ function mapRemotes(remotes: MFRemotes) {
       const [remoteName, remoteLocation] = remote;
       const remoteLocationExt = extname(remoteLocation);
       mappedRemotes[remoteName] = ['.js', '.mjs'].includes(remoteLocationExt)
-        ? remoteLocation
+        ? `${remoteLocation}`
+        : join(remoteLocation, 'remoteEntry.mjs');
+    } else if (typeof remote === 'string') {
+      mappedRemotes[remote] = determineRemoteUrl(remote);
+    }
+  }
+
+  return mappedRemotes;
+}
+
+function mapRemotesSSR(remotes: MFRemotes) {
+  const mappedRemotes: Record<string, string> = {};
+
+  for (const remote of remotes) {
+    if (Array.isArray(remote)) {
+      const [remoteName, remoteLocation] = remote;
+      const remoteLocationExt = extname(remoteLocation);
+      mappedRemotes[remoteName] = ['.js', '.mjs'].includes(remoteLocationExt)
+        ? `${remoteName}@${remoteLocation}`
         : join(remoteLocation, 'remoteEntry.mjs');
     } else if (typeof remote === 'string') {
       mappedRemotes[remote] = determineRemoteUrl(remote);
@@ -226,8 +244,9 @@ export async function withModuleFederation(options: MFConfig) {
     },
     experiments: {
       ...(config.experiments ?? {}),
-      outputModule: true,
+      outputModule: true
     },
+    target: 'web',
     plugins: [
       ...(config.plugins ?? []),
       new container.ModuleFederationPlugin({
@@ -235,12 +254,8 @@ export async function withModuleFederation(options: MFConfig) {
         filename: 'remoteEntry.mjs',
         exposes: options.exposes,
         remotes: mappedRemotes,
-        shared: {
-          ...sharedDependencies,
-        },
-        library: {
-          type: 'module',
-        },
+        library: {type: 'module'},
+        shared: { ...sharedDependencies },
       }),
       sharedLibraries.getReplacementPlugin(),
     ],
@@ -299,11 +314,11 @@ export async function withModuleFederationSsr(options: MFSSRConfig) {
   const mappedRemotes =
     !options.remotes || options.remotes.length === 0
       ? {}
-      : mapRemotes(options.remotes);
+      : mapRemotesSSR(options.remotes);
 
   return (config: any) => ({
     ...(config ?? {}),
-    ...(isRemote ? { target: false } : {}),
+    target: false,
     output: { ...(config.output ?? {}), uniqueName: normalizedName },
     resolve: {
       ...(config.resolve ?? {}),
@@ -314,21 +329,20 @@ export async function withModuleFederationSsr(options: MFSSRConfig) {
     },
     plugins: [
       ...(config.plugins ?? []),
-      new container.ModuleFederationPlugin({
+      new NodeFederationPlugin.NodeFederationPlugin({
         name: normalizedName,
         filename: 'remoteEntry.js',
         exposes: options.exposes,
         remotes: mappedRemotes,
+        library: {type: 'commonjs-module'},
         shared: { ...sharedDependencies },
       }),
       sharedLibraries.getReplacementPlugin(),
-      ...(isRemote
-        ? [
-            new NodeAsyncHttpRuntime({
-              getBaseUri: () => options.remoteBaseUrlPromise,
-            }),
-          ]
-        : []),
+      new NodeFederationPlugin.StreamingTargetPlugin({
+        name: normalizedName,
+        remotes: mappedRemotes,
+        library: {type: 'commonjs-module'},
+      }),
     ],
   });
 }
